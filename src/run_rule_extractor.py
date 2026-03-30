@@ -41,7 +41,7 @@ import yaml
 
 _SCRIPT_DIR  = Path(__file__).resolve().parent
 _PROJECT_DIR = _SCRIPT_DIR.parent
-_FACTORY_CFG = _PROJECT_DIR / "config" / "factory.yaml"
+_FACTORY_CFG = _SCRIPT_DIR / "config" / "factory.yaml"
 
 _PROFILE_NAME = "rule_extractor_run"
 

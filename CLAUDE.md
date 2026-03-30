@@ -1,12 +1,14 @@
 # CLAUDE.md
 
 ## Proyecto
-Nombre: <nombre del proyecto>
-Descripción breve: <qué hace este proyecto>
+Nombre: Ejecuciones desde script de EAs
+Descripción breve: Dado un EA existente en la carpeta raiz de Experts de MT5, ejecuta dicho EA en un simbolo determinado para un timeFrame determinado. Cargando una configuración específica de dicho EA.
 Python: 3.12+
 
 ## Arquitectura
-<descripción breve de la estructura de carpetas y responsabilidad de cada capa>
+src: como carpeta raiz del código de proyecto.
+  config: como carpeta de configuración almacena las variables y valores de configuración
+  modulos: código adicional que se pueda necesitar.
 
 ```
 src/

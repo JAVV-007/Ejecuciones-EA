@@ -1,0 +1,254 @@
+# =============================================================================
+# config/factory.yaml
+#
+# Descripción : Fichero de configuración ÚNICO de ea_factory.
+#               Contiene toda la configuración global y la de cada paso
+#               del pipeline organizada bajo la sección "steps:".
+#
+# Estructura:
+#   - mt5              : rutas al terminal y editor de MetaTrader 5
+#   - api              : conexión con EA Manager API
+#   - factory          : rutas del pipeline y comportamiento global
+#   - run_context_defaults : rango temporal y período por defecto
+#   - pipeline         : pasos activos
+#   - steps            : configuración específica de cada paso S1..S8
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# MetaTrader 5 — rutas de sistema
+# ---------------------------------------------------------------------------
+mt5:
+  terminal_path:   "C:/Program Files/MetaTrader 5/terminal64.exe"
+  editor_path:     "C:/Program Files/MetaTrader 5/metaeditor64.exe"
+  timeout_seconds: 1200
+  tester_model:    2    # 0=Every tick, 1=1min OHLC, 2=Open prices only, 4=Math
+
+# ---------------------------------------------------------------------------
+# EA Manager API
+# ---------------------------------------------------------------------------
+api:
+  base_url:             "http://127.0.0.1:8000"
+  mode:                 "online"   # "online" | "offline"
+  timeout_seconds:      10
+  fallback_magic_start: 90001
+
+# ---------------------------------------------------------------------------
+# Directorio raíz de datos de MT5 (variable reutilizada en las rutas de abajo)
+# ---------------------------------------------------------------------------
+mt5_data_dir: 'C:\Users\Alberto Veiga\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075'
+
+# ---------------------------------------------------------------------------
+# Factoría — comportamiento global del pipeline
+# ---------------------------------------------------------------------------
+factory:
+  base_experts_dir: "{mt5_data_dir}/MQL5/Experts"
+  source_dir:       "{mt5_data_dir}/MQL5/Files"
+  symbols_file:     "config/symbols.txt"
+  log_level:        "INFO"
+  logs_dir:         "logs"
+
+# ---------------------------------------------------------------------------
+# Contexto de ejecución — valores por defecto compartidos por todos los pasos
+# ---------------------------------------------------------------------------
+run_context_defaults:
+  period:    "Daily"
+  from_date: "2014.04.01"
+  to_date:   "2025.04.01"
+
+# ---------------------------------------------------------------------------
+# Pipeline — pasos activos por defecto
+# Se puede sobreescribir con --steps s1,s2,s3 en línea de comandos.
+# ---------------------------------------------------------------------------
+pipeline:
+  steps:
+    - s1
+    - s2
+    - s3
+    - s4
+    - s5
+    - s6
+    - s7
+    - s8
+
+# =============================================================================
+# Configuración específica de cada paso
+# =============================================================================
+steps:
+
+  # ---------------------------------------------------------------------------
+  # S1 — Extractor MQL5
+  # Copia el EA fuente al workspace y extrae las reglas de tipo "Rule".
+  # ---------------------------------------------------------------------------
+  s1_extractor:
+    extraction:
+      target_keyword:  "Rule"
+      output_filename: "reglas_encontradas.txt"
+    rule_extraction_ea_name: "RuleExtractor"
+    # Nombre fijo de workspace (opcional). Vacío = automático {SYMBOL}_{fecha}.
+    workspace_name: ""
+
+  # ---------------------------------------------------------------------------
+  # S2 — Generador de .ini
+  # Genera un .ini de optimización MT5 por cada regla extraída por S1.
+  # ---------------------------------------------------------------------------
+  s2_ini_generator:
+    optimization:
+      var_name: "SyntheticID"
+      start:    0
+      step:     1
+      stop:     200
+      mode:     1       # 1=Algoritmo Completo, 2=Algoritmo Genético
+    tester:
+      forward_mode:           0
+      deposit:                10000
+      currency:               "EUR"
+      profit_in_pips:         0
+      leverage:               200
+      execution_mode:         0
+      optimization_criterion: 1   # 1=Balance máximo
+    ea_params:
+      lot_size:
+        val:   0.1
+        start: 0.1
+        step:  0.01
+        stop:  1.0
+      stop_loss:
+        val:   0
+        start: 0
+        step:  1
+        stop:  40
+      take_profit:
+        val:   0
+        start: 0
+        step:  1
+        stop:  10
+      magic_number:
+        val:   0
+        start: 0
+        step:  1
+        stop:  999999
+      market_open_delay:
+        val:   5
+        start: 5
+        step:  1
+        stop:  50
+    filters:
+      - name:   "F1_ADX"
+        switch: "F1_UseADXFilter"
+        params:
+          - { name: "F1_ADX_Period",    val: 52,   start: 26,   step: 1,    stop: 62   }
+          - { name: "F1_ADX_SMA_Period",val: 89,   start: 70,   step: 1,    stop: 102  }
+          - { name: "F1_ADX_Ratio_Min", val: 0.63, start: 0.59, step: 0.01, stop: 0.72 }
+          - { name: "F1_ADX_Ratio_Max", val: 1.41, start: 1.36, step: 0.01, stop: 6.8  }
+      - name:   "F2_ATR"
+        switch: "F2_UseATRFilter"
+        params:
+          - { name: "F2_ATR_Period",    val: 23,   start: 11,   step: 1,    stop: 31   }
+          - { name: "F2_ATR_SMA_Period",val: 37,   start: 13,   step: 1,    stop: 64   }
+          - { name: "F2_ATR_Ratio_Min", val: 0.94, start: 0.88, step: 0.01, stop: 0.98 }
+          - { name: "F2_ATR_Ratio_Max", val: 9.07, start: 0.59, step: 0.01, stop: 14.22}
+
+  # ---------------------------------------------------------------------------
+  # S3 — Ejecutor MT5
+  # Compila el EA y ejecuta cada .ini generado por S2 en MT5.
+  # ---------------------------------------------------------------------------
+  s3_executor:
+    executor:
+      timeout_seconds:  600
+      continue_on_error: true
+
+  # ---------------------------------------------------------------------------
+  # S4 — Validador estadístico
+  # Analiza los XML de S3 y genera el .mq5 validado con reglas filtradas.
+  # CRÍTICO: los umbrales están calibrados. No modificar sin justificación.
+  # ---------------------------------------------------------------------------
+  s4_validator:
+    thresholds:
+      tz: 1.2    # Umbral máximo de Z-Score
+      td: 0.35   # Desviación mínima de las sintéticas
+      to: 0.5    # Sharpe mínimo del original para ser válido
+    output:
+      csv_filename:  "validation_results.csv"
+      json_filename: "validation_results.json"
+
+  # ---------------------------------------------------------------------------
+  # S5 — Selector TOP con validación Out-of-Sample
+  # Optimización completa + pre-filtro PF + backtest OOS por candidato.
+  # ---------------------------------------------------------------------------
+  s5_top_selector:
+    phase0:
+      top_n:                3       # Máximo de TOPs a generar
+      optimization_criterion: 2     # 2=Profit Factor
+      ranking_column:       "Profit Factor"
+      min_pf_optimization:  1.75    # Pre-filtro: PF mínimo en optimización
+      oos_months:           12      # Meses del período OOS
+      min_pf_oos:           1.40    # PF mínimo en backtest OOS para aprobar
+      max_oos_candidates:   25      # Límite de candidatos a evaluar en OOS
+    filters_to_process:
+      - name:   "FILTER_1"
+        switch: "F1_UseADXFilter"
+        params:
+          - { name: "F1_ADX_Period",    start: 10.0, step: 1.0,  stop: 100.0 }
+          - { name: "F1_ADX_SMA_Period",start: 5.0,  step: 1.0,  stop: 50.0  }
+          - { name: "F1_ADX_Ratio_Min", start: 0.1,  step: 0.01, stop: 1.0   }
+          - { name: "F1_ADX_Ratio_Max", start: 1.0,  step: 0.01, stop: 3.0   }
+      - name:   "FILTER_2"
+        switch: "F2_UseATRFilter"
+        params:
+          - { name: "F2_ATR_Period",    start: 5.0,  step: 1.0,  stop: 50.0  }
+          - { name: "F2_ATR_SMA_Period",start: 5.0,  step: 1.0,  stop: 50.0  }
+          - { name: "F2_ATR_Ratio_Min", start: 0.1,  step: 0.01, stop: 1.0   }
+          - { name: "F2_ATR_Ratio_Max", start: 1.0,  step: 0.01, stop: 3.0   }
+
+  # ---------------------------------------------------------------------------
+  # S6 — Refinador de filtros
+  # Refina los parámetros de cada filtro para cada TOP generado por S5.
+  # ---------------------------------------------------------------------------
+  s6_refiner:
+    convergence:
+      cv_threshold:        0.15
+      max_iterations:      3
+      opt_type_individual: 2   # 2=Genético (fases individuales)
+      opt_type_joint:      2   # 2=Genético (fase final conjunta)
+    range_limits:
+      limit_start: true
+      limit_stop:  true
+    filters_to_process:
+      - name:   "FILTER_1"
+        switch: "F1_UseADXFilter"
+        params:
+          - { name: "F1_ADX_Period",    start: 10.0, step: 1.0,  stop: 100.0 }
+          - { name: "F1_ADX_SMA_Period",start: 5.0,  step: 1.0,  stop: 50.0  }
+          - { name: "F1_ADX_Ratio_Min", start: 0.1,  step: 0.01, stop: 1.0   }
+          - { name: "F1_ADX_Ratio_Max", start: 1.0,  step: 0.01, stop: 3.0   }
+      - name:   "FILTER_2"
+        switch: "F2_UseATRFilter"
+        params:
+          - { name: "F2_ATR_Period",    start: 5.0,  step: 1.0,  stop: 50.0  }
+          - { name: "F2_ATR_SMA_Period",start: 5.0,  step: 1.0,  stop: 50.0  }
+          - { name: "F2_ATR_Ratio_Min", start: 0.1,  step: 0.01, stop: 1.0   }
+          - { name: "F2_ATR_Ratio_Max", start: 1.0,  step: 0.01, stop: 3.0   }
+    # Parámetros extra a refinar (SL/TP). Dejar vacío para no usarlos.
+    extra_params: []
+
+  # ---------------------------------------------------------------------------
+  # S7 — Sizing Monte Carlo
+  # Calcula el lotaje óptimo mediante simulación Monte Carlo para cada TOP.
+  # ---------------------------------------------------------------------------
+  s7_sizing:
+    montecarlo:
+      n_simulations: 1000
+      months:        6
+    risk:
+      capital:    10000
+      max_dd_pct: 20
+    # Percentil para el LotSize definitivo. Opciones: P50, P75, P95, P99
+    sizing_percentile: "P75"
+
+  # ---------------------------------------------------------------------------
+  # S8 — Registro en EA Manager
+  # Asigna Magic Number y registra el EA en la base de datos.
+  # ---------------------------------------------------------------------------
+  s8_register:
+    offline_fallback:
+      enabled: true   # true=continuar con fallback local si la API no responde

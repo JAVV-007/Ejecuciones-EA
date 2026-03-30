@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import pytest; print\\(''pytest OK''\\)\")",
+      "Bash(python -c \"import yaml; print\\(''yaml OK''\\)\")",
+      "Bash(python -m venv --help)",
+      "Bash(pip list:*)",
+      "Bash(conda info:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest tests/unit/test_run_rule_extractor.py -v)"
+    ]
+  }
+}
