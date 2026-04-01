@@ -45,6 +45,21 @@ _FACTORY_CFG = _SCRIPT_DIR / "config" / "factory.yaml"
 
 _PROFILE_NAME = "rule_extractor_run"
 
+# Mapeo de nombre de período (factory.yaml) → (period_type, period_size) del .chr de MT5
+_PERIOD_MAP: dict[str, tuple[int, int]] = {
+    "M1":    (0, 1),    # period_type=0 → minutos
+    "M5":    (0, 5),
+    "M15":   (0, 15),
+    "M30":   (0, 30),
+    "H1":    (1, 1),    # period_type=1 → horas
+    "H4":    (1, 4),
+    "H12":   (1, 12),
+    "Daily": (1, 24),   # D1 = 24 horas
+    "D1":    (1, 24),
+    "W1":    (2, 1),    # period_type=2 → semanas
+    "MN":    (3, 1),    # period_type=3 → meses
+}
+
 
 def _load_paths() -> tuple[Path, Path, Path]:
     """
@@ -56,6 +71,31 @@ def _load_paths() -> tuple[Path, Path, Path]:
     terminal_path = Path(cfg["mt5"]["terminal_path"])
     editor_path   = Path(cfg["mt5"]["editor_path"])
     return terminal_path, mt5_data_dir, editor_path
+
+
+def _load_run_context() -> tuple[int, int, int, int]:
+    """Carga temporalidad y rango de fechas de run_context_defaults en factory.yaml.
+
+    Returns:
+        Tupla (period_type, period_size, date_start_ts, date_end_ts) donde
+        date_start_ts y date_end_ts son timestamps Unix UTC.
+
+    Raises:
+        KeyError: Si falta alguna clave esperada en factory.yaml.
+        ValueError: Si el período no está en _PERIOD_MAP o las fechas no son válidas.
+    """
+    cfg = yaml.safe_load(_FACTORY_CFG.read_text(encoding="utf-8"))
+    ctx = cfg["run_context_defaults"]
+
+    period = ctx["period"]
+    if period not in _PERIOD_MAP:
+        raise ValueError(f"Período '{period}' no reconocido. Valores válidos: {list(_PERIOD_MAP)}")
+    period_type, period_size = _PERIOD_MAP[period]
+
+    date_start = int(datetime.strptime(ctx["from_date"], "%Y.%m.%d").replace(tzinfo=timezone.utc).timestamp())
+    date_end   = int(datetime.strptime(ctx["to_date"],   "%Y.%m.%d").replace(tzinfo=timezone.utc).timestamp())
+
+    return period_type, period_size, date_start, date_end
 
 
 # ---------------------------------------------------------------------------
@@ -105,8 +145,8 @@ _CHR_HEADER_TEMPLATE = """\
 id=999999999999999001
 symbol={symbol}
 description=
-period_type=1
-period_size=1
+period_type={period_type}
+period_size={period_size}
 digits=5
 tick_size=0.000000
 position_time=1744675200
@@ -191,12 +231,33 @@ fixed_height=-1
 </chart>"""
 
 
-def build_chr(symbol: str, mode: int, set_entries: list) -> str:
-    """
-    Genera el contenido de un fichero .chr para el perfil de RuleExtractor.
+def build_chr(
+    symbol: str,
+    mode: int,
+    set_entries: list,
+    period_type: int = 1,
+    period_size: int = 24,
+    date_start: int | None = None,
+    date_end: int | None = None,
+) -> str:
+    """Genera el contenido de un fichero .chr para el perfil de RuleExtractor.
 
     Los separadores de sección del .set se convierten en <unnamed>= dentro
     del bloque <inputs>, respetando el formato real de MT5.
+    Si se proporcionan date_start / date_end, sobreescriben INP_DATE_START /
+    INP_DATE_END del .set para garantizar coherencia con factory.yaml.
+
+    Args:
+        symbol: Símbolo MT5 para el gráfico (p.ej. 'EURUSD.QDL').
+        mode: Modo del EA (0=extracción, 1=sintéticos).
+        set_entries: Entradas parseadas del fichero .set.
+        period_type: Tipo de período MT5 según _PERIOD_MAP (por defecto 2=días).
+        period_size: Tamaño del período (por defecto 1 → D1).
+        date_start: Timestamp Unix UTC de inicio; sobreescribe INP_DATE_START si se indica.
+        date_end: Timestamp Unix UTC de fin; sobreescribe INP_DATE_END si se indica.
+
+    Returns:
+        Contenido completo del fichero .chr como string.
     """
     inputs_lines: list[str] = []
     for kind, data in set_entries:
@@ -205,9 +266,13 @@ def build_chr(symbol: str, mode: int, set_entries: list) -> str:
         else:
             name, value = data
             if name == "EA_MODE":
-                value = str(mode)       # sobreescribir con el modo solicitado
+                value = str(mode)
             elif name == "INP_SYMBOL":
-                value = ""              # vacío: EA usa el símbolo del gráfico
+                value = ""
+            elif name == "INP_DATE_START" and date_start is not None:
+                value = str(date_start)
+            elif name == "INP_DATE_END" and date_end is not None:
+                value = str(date_end)
             inputs_lines.append(f"{name}={value}")
 
     inputs_block = "\n".join(inputs_lines)
@@ -223,8 +288,25 @@ def build_chr(symbol: str, mode: int, set_entries: list) -> str:
         "</expert>"
     )
 
-    header = _CHR_HEADER_TEMPLATE.format(symbol=symbol)
+    header = _CHR_HEADER_TEMPLATE.format(symbol=symbol, period_type=period_type, period_size=period_size)
     return header + expert_block + _CHR_FOOTER
+
+
+def build_simple_chr(symbol: str, period_type: int = 1, period_size: int = 24) -> str:
+    """Genera un .chr que abre el símbolo en chart sin ningún EA adjunto.
+
+    Usado para verificación visual post-generación de sintéticos.
+
+    Args:
+        symbol: Símbolo a abrir (p.ej. 'EURAUD.QDL_SYNTH_200').
+        period_type: Tipo de período (por defecto 1 = horas).
+        period_size: Tamaño del período (por defecto 24 = D1).
+
+    Returns:
+        Contenido del fichero .chr como string.
+    """
+    header = _CHR_HEADER_TEMPLATE.format(symbol=symbol, period_type=period_type, period_size=period_size)
+    return header + _CHR_FOOTER
 
 
 # ---------------------------------------------------------------------------
@@ -283,44 +365,94 @@ def wait_mode0(files_dir: Path, symbol: str, timeout: int) -> bool:
     return False
 
 
+def _synth_dir_has_content(d: Path) -> bool:
+    """Devuelve True si el directorio de sintético contiene al menos un fichero > 0 bytes."""
+    try:
+        return any(f.is_file() and f.stat().st_size > 0 for f in d.iterdir())
+    except OSError:
+        return False
+
+
+def validate_synthetics(mt5_data_dir: Path, symbol: str, num_synthetics: int) -> tuple[bool, int, int]:
+    """Valida que los sintéticos se hayan generado correctamente.
+
+    Comprueba:
+      1. Existen exactamente num_synthetics directorios con patrón {symbol}_SYNTH_NNN.
+      2. Ningún directorio tiene contenido a 0 bytes (todos tienen al menos un .hcc > 0).
+
+    Args:
+        mt5_data_dir: Directorio raíz de datos de MT5.
+        symbol: Símbolo base (p.ej. 'EURAUD.QDL').
+        num_synthetics: Número de sintéticos esperados.
+
+    Returns:
+        Tupla (ok, dir_count, empty_count) donde:
+          - ok: True si dir_count == num_synthetics y empty_count == 0.
+          - dir_count: directorios encontrados con el patrón.
+          - empty_count: directorios sin contenido válido (vacíos o todos a 0 bytes).
+    """
+    synth_base = mt5_data_dir / "bases" / "Custom" / "history"
+    prefix     = f"{symbol}_SYNTH_"
+
+    if not synth_base.exists():
+        return False, 0, 0
+
+    dirs        = [d for d in synth_base.iterdir() if d.is_dir() and d.name.startswith(prefix)]
+    dir_count   = len(dirs)
+    empty_count = sum(1 for d in dirs if not _synth_dir_has_content(d))
+    ok          = dir_count == num_synthetics and empty_count == 0
+
+    return ok, dir_count, empty_count
+
+
 def wait_mode1(mt5_data_dir: Path, symbol: str, set_entries: list,
                num_synthetics: int, timeout: int, flush_wait: int) -> bool:
+    """Modo 1: monitoriza la creación de símbolos sintéticos en MT5.
+
+    Cuenta únicamente directorios {symbol}_SYNTH_NNN que tengan contenido
+    (al menos un fichero > 0 bytes), descartando directorios vacíos o en
+    proceso de escritura. Espera hasta N dirs con contenido y luego
+    flush_wait segundos de buffer para el flush de caché.
+
+    Args:
+        mt5_data_dir: Directorio raíz de datos de MT5.
+        symbol: Símbolo base (p.ej. 'EURAUD.QDL').
+        set_entries: Entradas del .set (no usadas en la detección, mantenidas
+                     por compatibilidad de firma).
+        num_synthetics: Número de sintéticos esperados.
+        timeout: Segundos máximos de espera.
+        flush_wait: Segundos extra tras completar para flush de caché MT5.
+
+    Returns:
+        True si se completaron los N sintéticos (con contenido) antes del timeout.
     """
-    Modo 1: monitoriza el directorio de símbolos sintéticos.
-    Formato del directorio: history/Custom/synth/{symbol}_D1_{from}_{to}/
-    Cada subdirectorio = un símbolo sintético generado.
-    Espera hasta N subdirectorios y luego flush_wait segundos de buffer.
-    """
-    # Calcular fechas desde los parámetros del .set
-    params = {n: v for kind, data in set_entries if kind == "param" for n, v in [data]}
-    date_start = int(params.get("INP_DATE_START", 1396310400))
-    date_end   = int(params.get("INP_DATE_END",   1743465600))
-    d_start = datetime.fromtimestamp(date_start, tz=timezone.utc).strftime("%Y%m%d")
-    d_end   = datetime.fromtimestamp(date_end,   tz=timezone.utc).strftime("%Y%m%d")
+    synth_base = mt5_data_dir / "bases" / "Custom" / "history"
+    prefix     = f"{symbol}_SYNTH_"
 
-    synth_root = mt5_data_dir / "history" / "Custom" / "synth"
-    synth_dir  = synth_root / f"{symbol}_D1_{d_start}_{d_end}"
+    print(f"[INFO] Directorio sinteticos: {synth_base}")
+    print(f"[INFO] Patron: {prefix}NNN")
+    print(f"[INFO] Esperando {num_synthetics} sinteticos con contenido...")
 
-    print(f"[INFO] Directorio sintéticos: {synth_dir}")
-    print(f"[INFO] Esperando {num_synthetics} sintéticos...")
-
+    count = 0
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        count = 0
-        if synth_dir.exists():
-            count = sum(1 for d in synth_dir.iterdir() if d.is_dir())
+        if synth_base.exists():
+            count = sum(
+                1 for d in synth_base.iterdir()
+                if d.is_dir() and d.name.startswith(prefix) and _synth_dir_has_content(d)
+            )
         elapsed = int(time.monotonic() - (deadline - timeout))
-        print(f"\r[INFO] {count}/{num_synthetics} sintéticos ({elapsed}s)", end="", flush=True)
+        print(f"\r[INFO] {count}/{num_synthetics} sinteticos ({elapsed}s)", end="", flush=True)
         if count >= num_synthetics:
             print()
-            print(f"[OK]   {num_synthetics} sintéticos completados.")
-            print(f"[INFO] Esperando {flush_wait}s para flush de caché MT5...")
+            print(f"[OK]   {num_synthetics} sinteticos con contenido completados.")
+            print(f"[INFO] Esperando {flush_wait}s para flush de cache MT5...")
             time.sleep(flush_wait)
             return True
         time.sleep(2)
 
     print()
-    print(f"[WARN] Timeout — sólo {count}/{num_synthetics} sintéticos generados")
+    print(f"[WARN] Timeout -- solo {count}/{num_synthetics} sinteticos con contenido")
     return False
 
 
@@ -356,17 +488,23 @@ def main() -> None:
                         help="0 = Extraccion de reglas  (genera {symbol}_Trading.mq5)\n"
                              "1 = Generacion de sinteticos  (crea simbolos Custom)")
     parser.add_argument("--set", dest="set_file",
-                        default=str(_SCRIPT_DIR / "crear ea 201404 202504.set"),
+                        default=str(_SCRIPT_DIR / "config" / "crear ea 201404 202504.set"),
                         help="Fichero .set con parámetros\n"
                              "(por defecto: 'crear ea 201404 202504.set' junto al script)")
-    parser.add_argument("--timeout", type=int, default=120,
-                        help="Segundos máximos esperando finalización (por defecto: 120)")
+    parser.add_argument("--timeout", type=int, default=60,
+                        help="Segundos máximos esperando finalización\n"
+                             "(por defecto: 60 — modo 0 tarda ~10s, modo 1 ~30-40s)")
     parser.add_argument("--flush-wait", type=int, default=15,
                         help="Segundos extra tras completar modo 1 (por defecto: 15)")
+    parser.add_argument("--verify-synth", action="store_true",
+                        help="Tras modo 1: abre MT5 con el ultimo sintetico para verificacion visual")
+    parser.add_argument("--verify-wait", type=int, default=5,
+                        help="Segundos que MT5 permanece abierto durante verificacion (por defecto: 5)")
     args = parser.parse_args()
 
-    # --- Resolver rutas ---
+    # --- Resolver rutas y contexto de ejecución ---
     terminal_path, mt5_data_dir, _ = _load_paths()
+    period_type, period_size, date_start, date_end = _load_run_context()
     common_ini   = mt5_data_dir / "config" / "common.ini"
     profiles_dir = mt5_data_dir / "MQL5" / "Profiles" / "Charts"
     files_dir    = mt5_data_dir / "MQL5" / "Files"
@@ -385,11 +523,16 @@ def main() -> None:
     print(f"[INFO] Símbolo : {args.symbol}")
     print(f"[INFO] Modo    : {mode_label}")
     print(f"[INFO] .set    : {set_path.name}  ({len(params)} parámetros)")
+    print(f"[INFO] Periodo : period_type={period_type}, period_size={period_size}  |  fechas: {date_start} -> {date_end}")
 
     # --- Crear perfil con el .chr ---
     profile_dir = profiles_dir / _PROFILE_NAME
     profile_dir.mkdir(parents=True, exist_ok=True)
-    chr_content = build_chr(args.symbol, args.mode, set_entries)
+    chr_content = build_chr(
+        args.symbol, args.mode, set_entries,
+        period_type=period_type, period_size=period_size,
+        date_start=date_start, date_end=date_end,
+    )
     chr_path    = profile_dir / "chart01.chr"
     chr_path.write_bytes(chr_content.encode("utf-16"))
     print(f"[INFO] Perfil  : {chr_path}")
@@ -408,7 +551,18 @@ def main() -> None:
                     timeout=args.timeout, flush_wait=args.flush_wait,
                 )
         finally:
+            print("[INFO] Esperando 10s antes de cerrar MT5...")
+            time.sleep(10)
             close_mt5()
+
+    # --- Validación post-ejecución modo 1 ---
+    if success and args.mode == 1:
+        ok, dir_count, empty_count = validate_synthetics(mt5_data_dir, args.symbol, num_synthetics)
+        if ok:
+            print(f"[OK]   Validacion: {dir_count}/{num_synthetics} dirs con contenido")
+        else:
+            print(f"[WARN] Validacion fallida: {dir_count}/{num_synthetics} dirs  |  {empty_count} vacias o a 0 bytes")
+            success = False
 
     # --- Resultado ---
     if success:
@@ -416,6 +570,20 @@ def main() -> None:
     else:
         print(f"\n[WARN] Completado con timeout — {args.symbol} modo {args.mode}")
         sys.exit(1)
+
+    # --- Verificación visual del último sintético (modo 1 + --verify-synth) ---
+    if args.mode == 1 and args.verify_synth:
+        last_synth = f"{args.symbol}_SYNTH_{num_synthetics:03d}"
+        print(f"\n[VERIFY] Abriendo MT5 con el ultimo sintetico: {last_synth}")
+        verify_dir = profiles_dir / "synth_verify"
+        verify_dir.mkdir(parents=True, exist_ok=True)
+        chr_content = build_simple_chr(last_synth, period_type=period_type, period_size=period_size)
+        (verify_dir / "chart01.chr").write_bytes(chr_content.encode("utf-16"))
+        set_profile_last(common_ini, "synth_verify")
+        launch_mt5(terminal_path)
+        print(f"[VERIFY] MT5 abierto con {last_synth}. Cerrando en {args.verify_wait}s...")
+        time.sleep(args.verify_wait)
+        close_mt5()
 
 
 if __name__ == "__main__":

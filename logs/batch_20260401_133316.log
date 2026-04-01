@@ -1,0 +1,18 @@
+# Batch run 20260401_133316
+# Simbolos : EURAUD.QDL, EURCAD.QDL, EURCHF.QDL, EURGBP.QDL, EURJPY.QDL, EURNZD.QDL, EURUSD.QDL
+# Formato  : [timestamp] symbol | modo N | OK/FAIL | Xs
+#----------------------------------------------------------
+[2026-04-01 13:33:38] EURAUD.QDL           | modo 0 | OK   | 22s
+[2026-04-01 13:34:51] EURAUD.QDL           | modo 1 | OK   | 73s
+[2026-04-01 13:35:14] EURCAD.QDL           | modo 0 | OK   | 22s
+[2026-04-01 13:36:25] EURCAD.QDL           | modo 1 | OK   | 71s
+[2026-04-01 13:36:47] EURCHF.QDL           | modo 0 | OK   | 22s
+[2026-04-01 13:37:58] EURCHF.QDL           | modo 1 | OK   | 71s
+[2026-04-01 13:38:21] EURGBP.QDL           | modo 0 | OK   | 22s
+[2026-04-01 13:39:32] EURGBP.QDL           | modo 1 | OK   | 71s
+[2026-04-01 13:39:54] EURJPY.QDL           | modo 0 | OK   | 22s
+[2026-04-01 13:41:16] EURJPY.QDL           | modo 1 | OK   | 81s
+[2026-04-01 13:41:39] EURNZD.QDL           | modo 0 | OK   | 22s
+[2026-04-01 13:42:52] EURNZD.QDL           | modo 1 | OK   | 73s
+[2026-04-01 13:43:14] EURUSD.QDL           | modo 0 | OK   | 22s
+[2026-04-01 13:44:28] EURUSD.QDL           | modo 1 | OK   | 73s

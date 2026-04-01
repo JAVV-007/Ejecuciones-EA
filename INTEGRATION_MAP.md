@@ -30,6 +30,23 @@ Cada bloque describe una relación entre dos o más módulos:
 
 ## Relaciones registradas
 
+### run_batch ↔ run_rule_extractor
+- Tipo de relación  : llamada directa (subprocess)
+- Dirección         : run_batch → run_rule_extractor
+- Descripción       : run_batch lanza run_rule_extractor.py como subprocess por cada símbolo activo
+- Ficheros          :
+    src/run_batch.py
+    src/run_rule_extractor.py
+- Test de integración: tests/integration/test_run_batch_run_rule_extractor.py
+- Tests al modificar run_batch.py:
+    pytest tests/unit/test_run_batch.py -v
+    pytest tests/integration/test_run_batch_run_rule_extractor.py -v
+- Tests al modificar run_rule_extractor.py:
+    pytest tests/unit/test_run_rule_extractor.py -v
+    pytest tests/integration/test_run_batch_run_rule_extractor.py -v
+- Detectado en tarea: implementacion del batch runner
+- Fecha             : 2026-03-31
+
 <!-- Las entradas se añaden aquí conforme se detectan dependencias.          -->
 <!-- Usar la plantilla de bloque definida al final de este fichero.          -->
 <!-- Ejemplo de entrada real:                                                 -->

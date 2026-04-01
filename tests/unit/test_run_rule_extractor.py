@@ -113,6 +113,8 @@ class TestBuildChr:
             ("sep", None),
             ("param", ("EA_MODE", "0")),
             ("param", ("INP_SYMBOL", "EURUSD")),
+            ("param", ("INP_DATE_START", "1396310400")),
+            ("param", ("INP_DATE_END",   "1743465600")),
             ("param", ("NUM_SYNTHETICS", "200")),
         ]
 
@@ -176,6 +178,185 @@ class TestBuildChr:
         assert "<chart>" in result
         assert "<expert>" in result
         assert "<window>" in result
+
+    def test_default_period_is_daily(self) -> None:
+        """El período por defecto es D1 (period_type=1, period_size=24 = 24 horas)."""
+        result = rre.build_chr("EURUSD", 0, [])
+
+        assert "period_type=1" in result
+        assert "period_size=24" in result
+
+    def test_custom_period_h1(self) -> None:
+        """Se puede especificar H1 (period_type=1, period_size=1)."""
+        result = rre.build_chr("EURUSD", 0, [], period_type=1, period_size=1)
+
+        assert "period_type=1" in result
+        assert "period_size=1" in result
+
+    def test_date_start_overridden(self) -> None:
+        """INP_DATE_START del .set se sobreescribe con el valor de date_start."""
+        result = rre.build_chr("EURUSD", 0, self._basic_entries(), date_start=9999999)
+
+        assert "INP_DATE_START=9999999" in result
+        assert "INP_DATE_START=1396310400" not in result
+
+    def test_date_end_overridden(self) -> None:
+        """INP_DATE_END del .set se sobreescribe con el valor de date_end."""
+        result = rre.build_chr("EURUSD", 0, self._basic_entries(), date_end=8888888)
+
+        assert "INP_DATE_END=8888888" in result
+        assert "INP_DATE_END=1743465600" not in result
+
+    def test_dates_not_overridden_when_none(self) -> None:
+        """Si no se pasan date_start/date_end se conservan los valores del .set."""
+        result = rre.build_chr("EURUSD", 0, self._basic_entries())
+
+        assert "INP_DATE_START=1396310400" in result
+        assert "INP_DATE_END=1743465600"   in result
+
+
+# ---------------------------------------------------------------------------
+# wait_mode1
+# ---------------------------------------------------------------------------
+
+class TestWaitMode1:
+    """Tests para wait_mode1: detección de sintéticos con contenido en bases/Custom/history/."""
+
+    def _make_synth_dir(self, tmp_path: Path, symbol: str, count: int,
+                         with_content: bool = True) -> Path:
+        """Crea N directorios {symbol}_SYNTH_NNN con o sin fichero de contenido."""
+        synth_base = tmp_path / "bases" / "Custom" / "history"
+        synth_base.mkdir(parents=True)
+        for i in range(1, count + 1):
+            d = synth_base / f"{symbol}_SYNTH_{i:03d}"
+            d.mkdir()
+            if with_content:
+                (d / "2014.hcc").write_bytes(b"\x00" * 1024)  # fichero > 0 bytes
+        return tmp_path
+
+    def test_returns_true_when_synthetics_with_content_present(self, tmp_path: Path) -> None:
+        """Devuelve True si los N sintéticos existen con contenido."""
+        mt5_data_dir = self._make_synth_dir(tmp_path, "EURAUD.QDL", 200, with_content=True)
+
+        result = rre.wait_mode1(mt5_data_dir, "EURAUD.QDL", [], 200, timeout=5, flush_wait=0)
+
+        assert result is True
+
+    def test_returns_false_when_dirs_exist_but_empty(self, tmp_path: Path) -> None:
+        """Directorios vacíos (0 bytes) no cuentan como sintéticos completados."""
+        mt5_data_dir = self._make_synth_dir(tmp_path, "EURAUD.QDL", 200, with_content=False)
+
+        result = rre.wait_mode1(mt5_data_dir, "EURAUD.QDL", [], 200, timeout=3, flush_wait=0)
+
+        assert result is False
+
+    def test_returns_false_on_timeout_with_zero_synthetics(self, tmp_path: Path) -> None:
+        """Devuelve False si no aparece ningún sintético antes del timeout."""
+        (tmp_path / "bases" / "Custom" / "history").mkdir(parents=True)
+
+        result = rre.wait_mode1(tmp_path, "EURAUD.QDL", [], 5, timeout=3, flush_wait=0)
+
+        assert result is False
+
+    def test_counts_only_matching_symbol(self, tmp_path: Path) -> None:
+        """Solo cuenta directorios del símbolo indicado, no de otros símbolos."""
+        synth_base = tmp_path / "bases" / "Custom" / "history"
+        synth_base.mkdir(parents=True)
+        for i in range(1, 201):
+            d = synth_base / f"AUDCAD.QDL_SYNTH_{i:03d}"
+            d.mkdir()
+            (d / "2014.hcc").write_bytes(b"\x00" * 1024)
+
+        result = rre.wait_mode1(tmp_path, "EURAUD.QDL", [], 200, timeout=3, flush_wait=0)
+
+        assert result is False
+
+    def test_partial_count_triggers_timeout(self, tmp_path: Path) -> None:
+        """Con menos sintéticos de los esperados devuelve False por timeout."""
+        mt5_data_dir = self._make_synth_dir(tmp_path, "EURAUD.QDL", 50, with_content=True)
+
+        result = rre.wait_mode1(mt5_data_dir, "EURAUD.QDL", [], 200, timeout=3, flush_wait=0)
+
+        assert result is False
+
+    def test_synth_base_missing_does_not_crash(self, tmp_path: Path) -> None:
+        """Si bases/Custom/history no existe aún, espera sin crashear."""
+        result = rre.wait_mode1(tmp_path, "EURAUD.QDL", [], 5, timeout=3, flush_wait=0)
+
+        assert result is False
+
+
+# ---------------------------------------------------------------------------
+# validate_synthetics
+# ---------------------------------------------------------------------------
+
+class TestValidateSynthetics:
+    """Tests para validate_synthetics: validación post-generación de sintéticos."""
+
+    def _make_synth_dirs(self, tmp_path: Path, symbol: str, count: int,
+                          empty_indices: list[int] | None = None) -> Path:
+        """Crea N dirs con contenido; empty_indices indica cuáles quedan vacíos."""
+        synth_base = tmp_path / "bases" / "Custom" / "history"
+        synth_base.mkdir(parents=True)
+        empty_set = set(empty_indices or [])
+        for i in range(1, count + 1):
+            d = synth_base / f"{symbol}_SYNTH_{i:03d}"
+            d.mkdir()
+            if i not in empty_set:
+                (d / "2014.hcc").write_bytes(b"\x00" * 1024)
+        return tmp_path
+
+    def test_ok_when_all_dirs_with_content(self, tmp_path: Path) -> None:
+        """Retorna (True, 200, 0) cuando todos los sintéticos tienen contenido."""
+        mt5 = self._make_synth_dirs(tmp_path, "EURAUD.QDL", 200)
+
+        ok, dir_count, empty_count = rre.validate_synthetics(mt5, "EURAUD.QDL", 200)
+
+        assert ok is True
+        assert dir_count   == 200
+        assert empty_count == 0
+
+    def test_fail_when_count_mismatch(self, tmp_path: Path) -> None:
+        """Retorna False si hay menos dirs de los esperados."""
+        mt5 = self._make_synth_dirs(tmp_path, "EURAUD.QDL", 150)
+
+        ok, dir_count, empty_count = rre.validate_synthetics(mt5, "EURAUD.QDL", 200)
+
+        assert ok is False
+        assert dir_count == 150
+
+    def test_fail_when_some_dirs_empty(self, tmp_path: Path) -> None:
+        """Retorna False si algún directorio está vacío o a 0 bytes."""
+        mt5 = self._make_synth_dirs(tmp_path, "EURAUD.QDL", 200, empty_indices=[1, 50, 100])
+
+        ok, dir_count, empty_count = rre.validate_synthetics(mt5, "EURAUD.QDL", 200)
+
+        assert ok is False
+        assert dir_count   == 200
+        assert empty_count == 3
+
+    def test_fail_when_synth_base_missing(self, tmp_path: Path) -> None:
+        """Retorna (False, 0, 0) si el directorio base no existe."""
+        ok, dir_count, empty_count = rre.validate_synthetics(tmp_path, "EURAUD.QDL", 200)
+
+        assert ok is False
+        assert dir_count   == 0
+        assert empty_count == 0
+
+    def test_counts_only_matching_symbol(self, tmp_path: Path) -> None:
+        """Solo cuenta dirs del símbolo indicado."""
+        synth_base = tmp_path / "bases" / "Custom" / "history"
+        synth_base.mkdir(parents=True)
+        # 200 dirs de AUDCAD, 0 de EURAUD
+        for i in range(1, 201):
+            d = synth_base / f"AUDCAD.QDL_SYNTH_{i:03d}"
+            d.mkdir()
+            (d / "2014.hcc").write_bytes(b"\x00" * 1024)
+
+        ok, dir_count, _ = rre.validate_synthetics(tmp_path, "EURAUD.QDL", 200)
+
+        assert ok is False
+        assert dir_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -295,3 +476,141 @@ class TestLoadPaths:
         # tras la corrección del bug (_SCRIPT_DIR en vez de _PROJECT_DIR)
         assert rre._FACTORY_CFG.parts[-2:] == ("config", "factory.yaml")
         assert "src" in rre._FACTORY_CFG.parts
+
+
+# ---------------------------------------------------------------------------
+# _load_run_context
+# ---------------------------------------------------------------------------
+
+class TestLoadRunContext:
+    """Tests para _load_run_context: carga de período y fechas desde factory.yaml."""
+
+    def _make_factory_yaml(self, tmp_path: Path, period: str = "Daily",
+                            from_date: str = "2014.04.01",
+                            to_date:   str = "2025.04.01") -> Path:
+        """Crea un factory.yaml con run_context_defaults configurado."""
+        cfg = {
+            "mt5_data_dir": str(tmp_path),
+            "mt5": {
+                "terminal_path": str(tmp_path / "terminal64.exe"),
+                "editor_path":   str(tmp_path / "metaeditor64.exe"),
+            },
+            "run_context_defaults": {
+                "period":    period,
+                "from_date": from_date,
+                "to_date":   to_date,
+            },
+        }
+        yaml_path = tmp_path / "factory.yaml"
+        yaml_path.write_text(yaml.dump(cfg), encoding="utf-8")
+        return yaml_path
+
+    def test_daily_maps_to_period_type_1_size_24(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """El período 'Daily' se mapea a period_type=1, period_size=24 (24 horas = D1)."""
+        yaml_path = self._make_factory_yaml(tmp_path, period="Daily")
+        monkeypatch.setattr(rre, "_FACTORY_CFG", yaml_path)
+
+        period_type, period_size, _, _ = rre._load_run_context()
+
+        assert period_type == 1
+        assert period_size == 24
+
+    def test_h1_maps_correctly(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """El período 'H1' se mapea a period_type=1, period_size=1."""
+        yaml_path = self._make_factory_yaml(tmp_path, period="H1")
+        monkeypatch.setattr(rre, "_FACTORY_CFG", yaml_path)
+
+        period_type, period_size, _, _ = rre._load_run_context()
+
+        assert period_type == 1
+        assert period_size == 1
+
+    def test_from_date_converted_to_timestamp(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """from_date '2014.04.01' se convierte al timestamp Unix UTC correcto."""
+        yaml_path = self._make_factory_yaml(tmp_path, from_date="2014.04.01")
+        monkeypatch.setattr(rre, "_FACTORY_CFG", yaml_path)
+
+        _, _, date_start, _ = rre._load_run_context()
+
+        assert date_start == 1396310400  # 2014-04-01 00:00:00 UTC
+
+    def test_to_date_converted_to_timestamp(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """to_date '2025.04.01' se convierte al timestamp Unix UTC correcto."""
+        yaml_path = self._make_factory_yaml(tmp_path, to_date="2025.04.01")
+        monkeypatch.setattr(rre, "_FACTORY_CFG", yaml_path)
+
+        _, _, _, date_end = rre._load_run_context()
+
+        assert date_end == 1743465600  # 2025-04-01 00:00:00 UTC
+
+    def test_unknown_period_raises_value_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Un período no reconocido lanza ValueError con mensaje descriptivo."""
+        yaml_path = self._make_factory_yaml(tmp_path, period="XYZ")
+        monkeypatch.setattr(rre, "_FACTORY_CFG", yaml_path)
+
+        with pytest.raises(ValueError, match="XYZ"):
+            rre._load_run_context()
+
+
+# ---------------------------------------------------------------------------
+# Validación contra factory.yaml real
+# ---------------------------------------------------------------------------
+
+class TestRunContextWithRealConfig:
+    """Valida que _load_run_context() y build_chr() son coherentes con
+    el factory.yaml del proyecto (src/config/factory.yaml).
+    Estos tests fallarán si el fichero no existe o tiene valores inesperados.
+    """
+
+    def test_real_factory_yaml_loads_without_error(self) -> None:
+        """_load_run_context() no lanza excepción con el factory.yaml real."""
+        # Si este test falla, el fichero no existe o tiene claves mal formadas
+        period_type, period_size, date_start, date_end = rre._load_run_context()
+
+        assert isinstance(period_type, int)
+        assert isinstance(period_size, int)
+        assert date_start > 0
+        assert date_end > date_start
+
+    def test_real_config_period_is_daily(self) -> None:
+        """factory.yaml tiene period='Daily' → period_type=1, period_size=24 (D1 = 24h)."""
+        period_type, period_size, _, _ = rre._load_run_context()
+
+        assert period_type == 1,  f"Se esperaba period_type=1 (horas), obtenido {period_type}"
+        assert period_size == 24, f"Se esperaba period_size=24 (D1=24h), obtenido {period_size}"
+
+    def test_real_config_dates_match_yaml(self) -> None:
+        """Las fechas cargadas coinciden con los valores declarados en factory.yaml."""
+        _, _, date_start, date_end = rre._load_run_context()
+
+        # Valores esperados según factory.yaml: from_date=2014.04.01, to_date=2025.04.01
+        assert date_start == 1396310400, f"from_date esperado 1396310400 (2014-04-01), obtenido {date_start}"
+        assert date_end   == 1743465600, f"to_date esperado 1743465600 (2025-04-01), obtenido {date_end}"
+
+    def test_chr_generated_with_real_config_has_correct_period(self) -> None:
+        """El .chr generado con los valores de factory.yaml contiene period_type=1, period_size=24 (D1)."""
+        period_type, period_size, date_start, date_end = rre._load_run_context()
+        chr_content = rre.build_chr(
+            "EURAUD.QDL", 0, [],
+            period_type=period_type, period_size=period_size,
+            date_start=date_start, date_end=date_end,
+        )
+
+        assert f"period_type={period_type}" in chr_content
+        assert f"period_size={period_size}" in chr_content
+
+    def test_chr_generated_with_real_config_has_correct_dates(self) -> None:
+        """El .chr generado con los valores de factory.yaml incluye las fechas correctas."""
+        period_type, period_size, date_start, date_end = rre._load_run_context()
+        entries = [
+            ("param", ("INP_DATE_START", "0")),
+            ("param", ("INP_DATE_END",   "0")),
+        ]
+        chr_content = rre.build_chr(
+            "EURAUD.QDL", 0, entries,
+            period_type=period_type, period_size=period_size,
+            date_start=date_start, date_end=date_end,
+        )
+
+        assert f"INP_DATE_START={date_start}" in chr_content
+        assert f"INP_DATE_END={date_end}"   in chr_content
