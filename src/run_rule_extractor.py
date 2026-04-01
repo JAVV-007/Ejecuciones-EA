@@ -24,7 +24,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import subprocess
 import sys
@@ -468,8 +467,32 @@ def launch_mt5(terminal_path: Path) -> None:
 
 
 def close_mt5() -> None:
-    os.system("taskkill /F /IM terminal64.exe >nul 2>&1")
-    time.sleep(2)
+    """Cierra MT5 de forma graceful para que pueda escribir symbols.custom.dat.
+
+    Envía WM_CLOSE a la ventana principal (cierre limpio). Si tras 15 s no ha
+    terminado, fuerza la terminación con /F como fallback.
+    """
+    # Intento graceful: taskkill sin /F envía WM_CLOSE → MT5 puede flushear symbols.custom.dat
+    subprocess.run(
+        ["taskkill", "/IM", "terminal64.exe"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    # Esperar hasta 15 s a que el proceso desaparezca
+    for _ in range(15):
+        time.sleep(1)
+        result = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq terminal64.exe", "/NH"],
+            capture_output=True, text=True,
+        )
+        if "terminal64.exe" not in result.stdout:
+            break
+    else:
+        # Fallback: forzar si no salió en 15 s
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "terminal64.exe"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        time.sleep(2)
     print("[INFO] MT5 cerrado.")
 
 

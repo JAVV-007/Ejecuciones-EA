@@ -123,6 +123,9 @@ def main() -> None:
                         help="Tras modo 1: abre MT5 con el ultimo sintetico para verificacion visual")
     parser.add_argument("--verify-wait", type=int, default=5,
                         help="Segundos que MT5 permanece abierto durante verificacion (por defecto: 5)")
+    parser.add_argument("--modes", nargs="+", type=int, choices=[0, 1], default=[0, 1],
+                        help="Modos a ejecutar por simbolo (por defecto: 0 1)\n"
+                             "Ejemplo: --modes 1  (solo sinteticos)")
     args = parser.parse_args()
 
     symbols_file = Path(args.symbols)
@@ -161,7 +164,7 @@ def main() -> None:
         print(f"\n[BATCH] [{i}/{total}] {symbol}")
         results[symbol] = {}
 
-        for mode in (0, 1):
+        for mode in args.modes:
             mode_label = "extraccion" if mode == 0 else "sinteticos"
             print(f"[BATCH]   modo {mode} ({mode_label}) ...")
             t0 = time.monotonic()
@@ -176,14 +179,16 @@ def main() -> None:
     elapsed_total = int(time.monotonic() - t_batch)
     ok_count   = sum(1 for modes in results.values() for ok in modes.values() if ok)
     fail_count = sum(1 for modes in results.values() for ok in modes.values() if not ok)
-    total_ops  = total * 2  # modo 0 + modo 1 por símbolo
+    total_ops  = total * len(args.modes)
 
     print("\n" + "=" * 60)
     print(f"[BATCH] Resumen : {ok_count}/{total_ops} OK  |  {fail_count} fallidos  |  {elapsed_total}s total")
     for symbol, modes in results.items():
-        m0 = "OK  " if modes[0] else "FAIL"
-        m1 = "OK  " if modes[1] else "FAIL"
-        print(f"        {symbol:<20}  modo0={m0}  modo1={m1}")
+        parts = "  ".join(
+            f"modo{m}={'OK  ' if modes[m] else 'FAIL'}"
+            for m in args.modes
+        )
+        print(f"        {symbol:<20}  {parts}")
     print(f"[BATCH] Log guardado en: {log_path}")
     print("=" * 60)
 

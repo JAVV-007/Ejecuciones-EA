@@ -14,7 +14,13 @@
       "Bash(python src/run_batch.py)",
       "Bash(find '/c/Users/Alberto Veiga/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075' -type f -name *.chr)",
       "Bash(find '/c/Users/Alberto Veiga/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075/bases/Custom' -type f -exec ls -lh {})",
-      "Bash(2)"
+      "Bash(2)",
+      "Bash(find '/c/Users/Alberto Veiga/AppData/Roaming/MetaQuotes/Terminal/D0E8209F77C8CF37AD8BF550E51FF075' -type f -name *.ini)",
+      "Bash(/tmp/resumen.txt:*)",
+      "Read(//tmp/**)",
+      "Bash(python -c \"import run_rule_extractor; print\\(''OK''\\)\")",
+      "Bash(python -c \"import sys; sys.path.insert\\(0,''src''\\); import run_rule_extractor; print\\(''OK''\\)\")",
+      "Bash(python -m pytest tests/unit/test_run_rule_extractor.py tests/unit/test_run_batch.py -v --tb=short)"
     ]
   }
 }
