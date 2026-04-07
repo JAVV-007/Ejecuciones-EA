@@ -1,0 +1,17 @@
+# Logs de ejecución batch
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Entorno virtual
+.venv/
+venv/
+
+# Variables de entorno
+.env
+*.env.*
