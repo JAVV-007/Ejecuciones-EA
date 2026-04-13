@@ -51,7 +51,7 @@ factory:
 # Contexto de ejecución — valores por defecto compartidos por todos los pasos
 # ---------------------------------------------------------------------------
 run_context_defaults:
-  period:    "Daily"
+  period:    "H4"
   from_date: "2014.04.01"
   to_date:   "2025.04.01"
 

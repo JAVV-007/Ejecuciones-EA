@@ -42,65 +42,73 @@ Todo fichero debe comenzar con el siguiente bloque:
 # =============================================================================
 ```
 
-### Documentación
-- Docstrings en todas las funciones y clases (formato Google style)
-- Comentarios en línea para lógica no evidente
-- Type hints obligatorios en todas las funciones públicas
-- Longitud máxima de línea: 100 caracteres
+## Mission
+Help implement Python code that is correct, maintainable, easy to test, and easy to understand.
 
-Ejemplo de función correctamente documentada:
+Always prioritize:
+1. Functional correctness
+2. Clarity
+3. Testability
+4. Simplicity
+5. Consistency with the repository
+6. Performance only when it is a real requirement
 
-```python
-def calculate_total(prices: list[float], tax_rate: float = 0.0) -> float:
-    """Calcula el total de una lista de precios aplicando impuestos.
+## Working style
+- Understand the goal before proposing or applying a final change.
+- Prefer minimal, localized, reversible changes.
+- Do not expand scope silently.
+- Do not invent requirements.
+- Respect existing architecture and conventions unless there is a clear reason to improve them.
+- Prefer the simplest solution that solves the problem correctly.
+- Do not introduce abstractions or layers unless they solve a concrete problem.
 
-    Args:
-        prices: Lista de precios unitarios.
-        tax_rate: Porcentaje de impuesto a aplicar (0.0 a 1.0).
+## Before changing code
+- Summarize the task briefly.
+- Identify relevant files, constraints, and risks.
+- If the task is ambiguous, list the ambiguity and ask only the blocking questions.
+- If the task is large or unclear, use plan mode first.
+- If the task affects multiple files or shared contracts, make the impact explicit before editing.
 
-    Returns:
-        Total con impuestos aplicados.
+## Python implementation rules
+- Prefer explicit, readable Python over cleverness.
+- Keep functions and classes small and cohesive.
+- Use clear, domain-meaningful names.
+- Use type hints in new or modified public interfaces when the project already uses them or when they improve clarity.
+- Keep domain logic separate from I/O, framework code, and side effects.
+- Avoid broad refactors unless they are required for correctness, clarity, or testability.
+- Follow the existing project style before introducing new conventions.
 
-    Raises:
-        ValueError: Si tax_rate está fuera del rango [0.0, 1.0].
-    """
-    if not 0.0 <= tax_rate <= 1.0:
-        raise ValueError(f"tax_rate debe estar entre 0.0 y 1.0, recibido: {tax_rate}")
-    return sum(prices) * (1 + tax_rate)
-```
+## Testing rules
+- Every meaningful behavior change should have automated validation or an explicit reason why it does not.
+- Prefer fast, deterministic pytest tests.
+- Cover happy path, edge cases, and expected failures when relevant.
+- When fixing a bug, add or update a regression test.
+- Use mocks or fakes only for external or non-deterministic dependencies.
 
----
+## Error handling
+- Do not hide errors silently.
+- Distinguish expected exceptions from programming mistakes.
+- Add useful context to errors and logs.
+- Do not catch broad exceptions without a clear reason.
 
-## Herramientas
-- Linter/formatter: ruff (configurado en pyproject.toml)
-- Tipado estático: mypy
-- Tests: pytest
-- Gestión de dependencias: <uv / pip / poetry — elige uno>
+## Documentation
+- Update docstrings, types, contracts, or README when behavior, usage, setup, or architecture changes.
+- Document decisions that are not obvious from the code.
+- Do not add redundant comments.
 
----
+## Required checks before finishing
+Before closing a task, verify:
+- the goal is met;
+- the scope stayed controlled;
+- the code is readable;
+- tests were added or updated when needed;
+- remaining assumptions, risks, or follow-ups are explicit.
 
-## Tests — Reglas obligatorias
-
-### Pruebas unitarias
-- Cada función o clase tiene su test unitario en `tests/unit/test_<módulo>.py`
-- El test se entrega en la misma tarea que el código. No son opcionales.
-- Al finalizar el desarrollo de cada tarea, ejecutar:
-  ```bash
-  pytest tests/unit/test_<módulo>.py -v
-  ```
-
-### Pruebas de integración
-- Antes de iniciar cualquier tarea, leer `INTEGRATION_MAP.md` y comprobar si el
-  módulo afectado aparece en alguna relación registrada.
-- Si se descubre una nueva dependencia entre módulos durante el desarrollo,
-  actualizar `INTEGRATION_MAP.md` en la misma tarea antes de cerrarla.
-- Si dos o más módulos están relacionados (uno llama al otro, comparten datos
-  o dependen funcionalmente), crear `tests/integration/test_<a>_<b>.py`.
-- Si se modifica cualquiera de los módulos implicados en una relación, ejecutar:
-  ```bash
-  pytest tests/unit/test_<módulo>.py -v
-  pytest tests/integration/test_<a>_<b>.py -v
-  ```
+## Claude Code specific guidance
+- Use plan mode for large, risky, or ambiguous changes.
+- Use subagents only when they add real value, such as isolated review.
+- Keep this file concise and actionable.
+- If a rule needs deterministic enforcement, prefer hooks, permissions, or dedicated subagents instead of making this file longer.
 
 ### Checklist de cierre de tarea
 Antes de dar una tarea por terminada, reportar explícitamente:
@@ -115,106 +123,4 @@ Antes de dar una tarea por terminada, reportar explícitamente:
 [ ] README.md actualizado con nuevas funciones o módulos
 [ ] Comandos de ejecución de tests indicados
 [ ] Propuesta de bump de versión indicada
-```
-
----
-
-## Documentación de proyecto
-
-- Al crear o modificar una función pública, actualizar `README.md` en la sección
-  correspondiente al módulo.
-- Al añadir un módulo nuevo, crear su sección en `README.md` con descripción
-  general y tabla de funciones.
-- El `README.md` es fuente de verdad para cualquier persona nueva en el proyecto.
-
----
-
-## Control de versiones — GitHub
-
-### Checkpoint de inicio de sesión
-Antes de iniciar cualquier cambio en una sesión nueva:
-
-1. Verificar que la rama de trabajo está al día con main:
-   ```bash
-   git fetch origin
-   git status
-   git log main..HEAD --oneline
-   ```
-2. Si hay discrepancias (commits no mergeados, conflictos potenciales),
-   reportarlo y esperar confirmación antes de continuar.
-3. Nunca trabajar directamente sobre `main`.
-
-### Ramas
-- Una rama por tarea o feature: `feature/<descripcion-corta>`
-- Correcciones urgentes: `hotfix/<descripcion-corta>`
-
-### Versionado semántico — propuesta obligatoria al cerrar cada tarea
-
-| Tipo   | Cuándo usarlo |
-|--------|---------------|
-| MAJOR (X.0.0) | Cambios que rompen compatibilidad, refactors estructurales, cambios de API pública |
-| MINOR (0.X.0) | Nueva funcionalidad que no rompe lo existente |
-| PATCH (0.0.X) | Corrección de bugs, ajustes menores, documentación |
-
-El bump de versión se aplica en `pyproject.toml` **solo con confirmación explícita** del desarrollador.
-
-### Formato de commit obligatorio
-
-```
-<tipo>(<scope>): <descripción corta en presente>
-
-Tipos válidos: feat | fix | docs | refactor | test | chore
-Ejemplos:
-  feat(auth): añadir endpoint de login con JWT
-  fix(db): corregir cierre de conexión en timeout
-  test(api): añadir tests de integración para auth + db
-  docs(readme): actualizar tabla de funciones del módulo api
-```
-
----
-
-## Comportamiento esperado
-
-### Inicio obligatorio de cada sesión
-Antes de cualquier otra acción, ejecutar siempre estos dos pasos en orden:
-
-1. **Leer `INTEGRATION_MAP.md`** completo e identificar qué módulos de la tarea
-   actual aparecen en relaciones registradas. Reportar el resultado:
-   - Si hay relaciones afectadas: listarlas explícitamente antes de empezar.
-   - Si no hay relaciones afectadas: indicarlo con "INTEGRATION_MAP revisado — sin dependencias afectadas".
-
-2. **Checkpoint Git** (ver sección Control de versiones).
-
-No iniciar ningún desarrollo hasta completar ambos pasos.
-
-### Durante el desarrollo
-- Hacer **UNA sola cosa por tarea**. Si se detecta que hay que tocar algo fuera
-  del scope indicado, preguntar antes de hacerlo.
-- No reorganizar imports ni reformatear código que no sea parte de la tarea.
-- No añadir dependencias nuevas sin indicarlo explícitamente en la respuesta
-  y esperar confirmación.
-- Si algo es ambiguo o hay dudas técnicas, **preguntar siempre antes de
-  implementar**. No asumir ni inferir intenciones.
-- Nunca modificar ficheros fuera de los indicados en la tarea.
-- Si durante el desarrollo se detecta una dependencia entre módulos no registrada,
-  **actualizar `INTEGRATION_MAP.md` de forma inmediata** antes de continuar.
-
----
-
-## Ficheros y carpetas fuera de límites — NO MODIFICAR salvo instrucción explícita
-
-- `.env` y cualquier fichero `*.env.*`
-- `pyproject.toml`
-- `.github/`
-- `CLAUDE.md` (este fichero)
-
----
-
-## Comandos habituales
-
-```bash
-make dev        # Levantar entorno de desarrollo
-make test       # Ejecutar suite completa de tests
-make lint       # Ruff check + format
-make typecheck  # mypy sobre src/
 ```

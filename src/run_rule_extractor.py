@@ -521,6 +521,8 @@ def main() -> None:
                         help="Segundos extra tras completar modo 1 (por defecto: 15)")
     parser.add_argument("--verify-synth", action="store_true",
                         help="Tras modo 1: abre MT5 con el ultimo sintetico para verificacion visual")
+    parser.add_argument("--verify-symbol", action="store_true",
+                        help="Tras modo 0: abre MT5 con el simbolo sin EA para verificacion visual")
     parser.add_argument("--verify-wait", type=int, default=5,
                         help="Segundos que MT5 permanece abierto durante verificacion (por defecto: 5)")
     args = parser.parse_args()
@@ -605,6 +607,19 @@ def main() -> None:
         set_profile_last(common_ini, "synth_verify")
         launch_mt5(terminal_path)
         print(f"[VERIFY] MT5 abierto con {last_synth}. Cerrando en {args.verify_wait}s...")
+        time.sleep(args.verify_wait)
+        close_mt5()
+
+    # --- Verificación visual del símbolo real (modo 0 + --verify-symbol) ---
+    if args.mode == 0 and args.verify_symbol:
+        print(f"\n[VERIFY] Abriendo MT5 con el simbolo: {args.symbol} (sin EA)")
+        verify_dir = profiles_dir / "symbol_verify"
+        verify_dir.mkdir(parents=True, exist_ok=True)
+        chr_content = build_simple_chr(args.symbol, period_type=period_type, period_size=period_size)
+        (verify_dir / "chart01.chr").write_bytes(chr_content.encode("utf-16"))
+        set_profile_last(common_ini, "symbol_verify")
+        launch_mt5(terminal_path)
+        print(f"[VERIFY] MT5 abierto con {args.symbol}. Cerrando en {args.verify_wait}s...")
         time.sleep(args.verify_wait)
         close_mt5()
 

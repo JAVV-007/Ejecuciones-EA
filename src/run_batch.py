@@ -6,7 +6,7 @@
 #              (sintéticos) antes de pasar al siguiente símbolo.
 # Autor     : Alberto Veiga
 # Creado    : 2026-03-31
-# Modificado: 2026-03-31 — Orden modo 0→1 por símbolo + log de ejecución
+# Modificado: 2026-04-13 — Verificación visual del símbolo en modo 0 (último símbolo)
 # =============================================================================
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def run_symbol(
     timeout: int,
     flush_wait: int,
     verify_synth: bool = False,
-    verify_wait: int = 5,
+    verify_symbol: bool = False,
 ) -> bool:
     """Ejecuta run_rule_extractor.py para un símbolo y modo dados como subprocess.
 
@@ -83,8 +83,8 @@ def run_symbol(
         set_file: Ruta al fichero .set; cadena vacía usa el valor por defecto.
         timeout: Segundos máximos de espera.
         flush_wait: Segundos extra tras completar modo 1.
-        verify_synth: Si True, abre MT5 con el último sintético tras modo 1.
-        verify_wait: Segundos que MT5 permanece abierto durante la verificación.
+        verify_synth: Si True, abre MT5 con el último sintético tras modo 1 (10s).
+        verify_symbol: Si True, abre MT5 con el símbolo sin EA tras modo 0 (10s).
 
     Returns:
         True si el proceso terminó con exit code 0.
@@ -99,7 +99,9 @@ def run_symbol(
     if set_file:
         cmd += ["--set", set_file]
     if verify_synth and mode == 1:
-        cmd += ["--verify-synth", "--verify-wait", str(verify_wait)]
+        cmd += ["--verify-synth", "--verify-wait", "10"]
+    if verify_symbol and mode == 0:
+        cmd += ["--verify-symbol", "--verify-wait", "10"]
 
     result = subprocess.run(cmd)
     return result.returncode == 0
@@ -119,10 +121,6 @@ def main() -> None:
                         help="Segundos maximos de espera por simbolo y modo (por defecto: 60)")
     parser.add_argument("--flush-wait", type=int, default=15,
                         help="Segundos extra tras completar modo 1 (por defecto: 15)")
-    parser.add_argument("--verify-synth", action="store_true",
-                        help="Tras modo 1: abre MT5 con el ultimo sintetico para verificacion visual")
-    parser.add_argument("--verify-wait", type=int, default=5,
-                        help="Segundos que MT5 permanece abierto durante verificacion (por defecto: 5)")
     parser.add_argument("--modes", nargs="+", type=int, choices=[0, 1], default=[0, 1],
                         help="Modos a ejecutar por simbolo (por defecto: 0 1)\n"
                              "Ejemplo: --modes 1  (solo sinteticos)")
@@ -168,8 +166,11 @@ def main() -> None:
             mode_label = "extraccion" if mode == 0 else "sinteticos"
             print(f"[BATCH]   modo {mode} ({mode_label}) ...")
             t0 = time.monotonic()
+            is_last_synth  = (i == total and mode == 1)
+            is_last_mode0  = (i == total and mode == 0 and args.modes == [0])
             ok = run_symbol(symbol, mode, args.set_file, args.timeout, args.flush_wait,
-                            verify_synth=args.verify_synth, verify_wait=args.verify_wait)
+                            verify_synth=is_last_synth,
+                            verify_symbol=is_last_mode0)
             elapsed_s = int(time.monotonic() - t0)
 
             results[symbol][mode] = ok

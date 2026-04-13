@@ -225,3 +225,41 @@ class TestRunSymbol:
             cmd = mock_run.call_args[0][0]
 
         assert "--set" not in cmd
+
+    def test_verify_symbol_adds_flag_in_mode0(self) -> None:
+        """Si verify_symbol=True y mode=0, el comando incluye --verify-symbol.
+
+        El timeframe (H12, H4, etc.) lo lee run_rule_extractor de factory.yaml;
+        run_batch sólo pasa el flag de activación, sin asumir ningún periodo.
+        """
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("run_batch.subprocess.run", return_value=mock_result) as mock_run:
+            run_batch.run_symbol("EURAUD.QDL", 0, "", 60, 15, verify_symbol=True)
+            cmd = mock_run.call_args[0][0]
+
+        assert "--verify-symbol" in cmd
+        assert "--verify-wait" in cmd
+
+    def test_verify_symbol_ignored_in_mode1(self) -> None:
+        """Si verify_symbol=True pero mode=1, no se añade --verify-symbol al comando."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("run_batch.subprocess.run", return_value=mock_result) as mock_run:
+            run_batch.run_symbol("EURAUD.QDL", 1, "", 60, 15, verify_symbol=True)
+            cmd = mock_run.call_args[0][0]
+
+        assert "--verify-symbol" not in cmd
+
+    def test_verify_symbol_false_omits_flag(self) -> None:
+        """Si verify_symbol=False (valor por defecto), no se incluye --verify-symbol."""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("run_batch.subprocess.run", return_value=mock_result) as mock_run:
+            run_batch.run_symbol("EURAUD.QDL", 0, "", 60, 15)
+            cmd = mock_run.call_args[0][0]
+
+        assert "--verify-symbol" not in cmd
